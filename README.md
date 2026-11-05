@@ -1,6 +1,6 @@
 # Factores Asociados al Rendimiento en la ENLA 2024
 
-**Autor/a:** [Escribe aquí tu Nombre y Apellidos]  
+**Autor/a:** [MARIA MORI  y BORIS ARCE]  
 **Institución:** Escuela de Posgrado - UPeU  
 
 ## Pregunta de investigación
