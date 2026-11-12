@@ -1,0 +1,396 @@
+---
+title: "Protocolo de preparación de datos y análisis exploratorio orientado a hipótesis"
+subtitle: "Determinantes socioeducativos del rendimiento en lectura y matemática en estudiantes de 6.° grado de primaria del Perú (ENLA 2024). Producto de la Unidad I"
+author:
+  - María del Pilar Mori Sánchez
+  - Boris Jesús Arce Saavedra
+affiliation: "Escuela de Posgrado, Universidad Peruana Unión. Segunda Especialidad en Ciencia de Datos e IA Aplicada"
+date: today
+date-format: "D [de] MMMM [de] YYYY"
+lang: es
+bibliography: referencias.bib
+csl: apa.csl
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    embed-resources: true
+    code-fold: true
+    code-summary: "Ver código"
+    fig-width: 8
+    fig-height: 4.2
+    fig-dpi: 110
+    theme: cosmo
+    fontsize: 0.95em
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+paquetes <- c("dplyr", "tidyr", "ggplot2", "survey", "lme4", "knitr", "scales")
+invisible(lapply(paquetes, function(p) suppressPackageStartupMessages(library(p, character.only = TRUE))))
+options(survey.lonely.psu = "adjust", dplyr.summarise.inform = FALSE)
+
+# Si el dataset curado no existe (clon limpio sin data/processed), se regenera.
+ruta_rds <- file.path("data", "processed", "enla6p_2024_curado.rds")
+if (!file.exists(ruta_rds)) source(file.path("R", "01_preparacion.R"))
+
+d   <- readRDS(ruta_rds)
+dic <- read.csv(file.path("docs", "diccionario_datos.csv"), encoding = "UTF-8")
+dec <- read.csv(file.path("docs", "registro_decisiones.csv"), encoding = "UTF-8")
+
+f0 <- function(x) format(round(x, 0), big.mark = " ", scientific = FALSE)
+f1 <- function(x) formatC(x, format = "f", digits = 1, decimal.mark = ",")
+f2 <- function(x) formatC(x, format = "f", digits = 2, decimal.mark = ",")
+pc <- function(x) paste0(f1(100 * x), " %")
+
+# Diseños muestrales por prueba (conglomerado IE, estrato DRE, peso específico)
+dl <- subset(d, !is.na(lect)); dm <- subset(d, !is.na(mat))
+desL <- svydesign(ids = ~id_ie, strata = ~estrato, weights = ~peso_lect, data = dl, nest = TRUE)
+desM <- svydesign(ids = ~id_ie, strata = ~estrato, weights = ~peso_mat,  data = dm, nest = TRUE)
+sdL <- sqrt(coef(svyvar(~lect, desL))); sdM <- sqrt(coef(svyvar(~mat, desM)))
+
+tema <- theme_minimal(base_size = 11) +
+  theme(plot.title = element_text(face = "bold", size = 11.5),
+        plot.title.position = "plot", legend.position = "bottom",
+        panel.grid.minor = element_blank())
+pal2 <- c("#1F5A96", "#C8553D")
+pal_niv <- c("Previo al inicio" = "#B2182B", "En inicio" = "#EF8A62",
+             "En proceso" = "#67A9CF", "Satisfactorio" = "#2166AC")
+
+# Medias ponderadas, diferencias de diseño y d de Cohen por grupo binario
+contraste <- function(var, ref_alta) {
+  out <- lapply(list(Lectura = list(des = desL, y = "lect", sd = sdL),
+                     Matemática = list(des = desM, y = "mat", sd = sdM)), function(z) {
+    f  <- as.formula(paste0("~", z$y)); g <- as.formula(paste0("~", var))
+    mb <- svyby(f, g, z$des, svymean); ci <- confint(mb)
+    tt <- svyttest(as.formula(paste0(z$y, "~", var)), z$des)
+    dif <- unname(tt$estimate); cid <- unname(tt$conf.int)
+    data.frame(grupo = as.character(mb[[1]]), media = mb[[2]], li = ci[, 1], ls = ci[, 2],
+               dif = dif, dif_li = cid[1], dif_ls = cid[2],
+               d = dif / z$sd, d_li = cid[1] / z$sd, d_ls = cid[2] / z$sd,
+               p = tt$p.value, row.names = NULL)
+  })
+  dplyr::bind_rows(out, .id = "prueba")
+}
+prop_satisf <- function(var) {
+  a <- svyby(~satisf_lect, as.formula(paste0("~", var)), desL, svymean)
+  b <- svyby(~satisf_mat,  as.formula(paste0("~", var)), desM, svymean)
+  data.frame(grupo = as.character(a[[1]]),
+             Lectura = a$satisf_lect, Lectura_se = a$se,
+             Matemática = b$satisf_mat, Matemática_se = b$se)
+}
+niveles_pond <- function(var) {
+  bind_rows(
+    dl |> group_by(grupo = .data[[var]], nivel = nivel_lect) |>
+      summarise(w = sum(peso_lect)) |> mutate(prueba = "Lectura"),
+    dm |> group_by(grupo = .data[[var]], nivel = nivel_mat) |>
+      summarise(w = sum(peso_mat)) |> mutate(prueba = "Matemática")) |>
+    group_by(prueba, grupo) |> mutate(p = w / sum(w)) |> ungroup()
+}
+fig_densidad <- function(var, titulo) {
+  long <- bind_rows(
+    dl |> transmute(grupo = .data[[var]], puntaje = lect, w = peso_lect, prueba = "Lectura"),
+    dm |> transmute(grupo = .data[[var]], puntaje = mat,  w = peso_mat,  prueba = "Matemática"))
+  medias <- long |> group_by(prueba, grupo) |> summarise(m = weighted.mean(puntaje, w))
+  ggplot(long, aes(puntaje, colour = grupo, fill = grupo, weight = w)) +
+    geom_density(alpha = 0.15, adjust = 1.2, linewidth = 0.7) +
+    geom_vline(data = medias, aes(xintercept = m, colour = grupo), linetype = 2) +
+    facet_wrap(~prueba) +
+    scale_colour_manual(values = pal2, name = NULL) +
+    scale_fill_manual(values = pal2, name = NULL) +
+    labs(title = titulo, x = "Medida de logro (puntos de la escala ENLA)",
+         y = "Densidad ponderada") + tema
+}
+fig_niveles <- function(var, titulo) {
+  ggplot(niveles_pond(var), aes(x = grupo, y = p, fill = nivel)) +
+    geom_col(width = 0.65) +
+    geom_text(aes(label = ifelse(p > 0.06, paste0(round(100 * p), "%"), "")),
+              position = position_stack(vjust = 0.5), size = 3, colour = "white") +
+    facet_wrap(~prueba) + coord_flip() +
+    scale_y_continuous(labels = percent_format(accuracy = 1)) +
+    scale_fill_manual(values = pal_niv, name = "Nivel de logro") +
+    labs(title = titulo, x = NULL, y = "Porcentaje ponderado de estudiantes") + tema
+}
+tab_contraste <- function(x) {
+  x |>
+    transmute(Prueba = prueba, Grupo = grupo,
+              `Media (IC 95 %)` = paste0(f1(media), " (", f1(li), "; ", f1(ls), ")"),
+              `Diferencia (IC 95 %)` = paste0(f1(dif), " (", f1(dif_li), "; ", f1(dif_ls), ")"),
+              `d (IC 95 %)` = paste0(f2(d), " (", f2(d_li), "; ", f2(d_ls), ")")) |>
+    group_by(Prueba) |>
+    mutate(`Diferencia (IC 95 %)` = ifelse(row_number() == 1, `Diferencia (IC 95 %)`, ""),
+           `d (IC 95 %)` = ifelse(row_number() == 1, `d (IC 95 %)`, "")) |>
+    ungroup()
+}
+
+cA <- contraste("area"); cG <- contraste("gestion"); cS <- contraste("sexo")
+pA <- prop_satisf("area"); pG <- prop_satisf("gestion"); pS <- prop_satisf("sexo")
+g <- function(x, pr, col = "dif") x[x$prueba == pr, col][1]
+gm <- function(x, pr, gr) x$media[x$prueba == pr & x$grupo == gr]
+
+n_tot <- nrow(d); n_ie <- dplyr::n_distinct(d$id_ie)
+n_dre <- nlevels(d$dre); n_est <- dplyr::n_distinct(d$estrato)
+mL <- coef(svymean(~lect, desL)); mM <- coef(svymean(~mat, desM))
+sL <- coef(svymean(~satisf_lect, desL)); sM <- coef(svymean(~satisf_mat, desM))
+```
+
+# Contexto y pregunta de investigación
+
+Las brechas de aprendizaje asociadas al lugar de residencia y al tipo de institución educativa (IE) persisten en la educación primaria peruana y condicionan las trayectorias escolares posteriores. Este protocolo documenta la preparación del archivo muestral de la Evaluación Nacional de Logros de Aprendizaje (ENLA) 2024 de 6.° grado de primaria, elaborado por la Oficina de Medición de la Calidad de los Aprendizajes (UMC) del Ministerio de Educación (MINEDU), y el análisis exploratorio que orientará la modelación de la Unidad II.
+
+La pregunta de investigación es la siguiente: ¿de qué manera el área geográfica, la gestión de la IE y el sexo del estudiante se asocian con la medida de logro y con el nivel de logro en lectura y matemática de los estudiantes de 6.° grado evaluados en la ENLA 2024? El alcance declarado en el Avance 1 es explicativo y predictivo. En esta unidad el análisis es descriptivo e inferencial a nivel poblacional; ninguna de las asociaciones reportadas admite lectura causal, porque las tres variables explicativas son atributos no manipulables y el diseño es transversal.
+
+Las hipótesis que orientan el análisis exploratorio son cuatro:
+
+- **H1 (área).** Los estudiantes de IE urbanas obtienen medidas promedio y proporciones de logro satisfactorio mayores que los de IE rurales en ambas pruebas, y la brecha se mantiene dentro de la gestión pública.
+- **H2 (gestión).** Los estudiantes de IE privadas superan a los de IE públicas en ambas pruebas.
+- **H3 (sexo).** La brecha por sexo cambia de dirección según el área curricular: favorece a las mujeres en lectura y a los hombres en matemática.
+- **H4 (anidamiento).** Una proporción sustantiva de la varianza de los puntajes (correlación intraclase > 0,10) se ubica entre IE, lo que exige modelos multinivel o validación agrupada en la Unidad II.
+
+# Fuentes de datos y consideraciones éticas
+
+**Fuente y linaje.** El insumo único es el archivo `BD_6P ENLA muestral 2024.xlsx`, descargado del portal de bases de datos de la UMC y conservado sin modificaciones en `data/raw/`. Contiene tres hojas: `BD` (`r f0(n_tot)` registros y 21 variables), `Diccionario de variables` y `Observaciones` (vacía). La unidad de análisis es el estudiante. La muestra incluye `r f0(n_ie)` IE de `r n_dre` DRE, distribuidas en `r n_est` estratos muestrales. El linaje completo es: portal UMC → `data/raw/` (solo lectura) → `R/01_preparacion.R` → `data/processed/enla6p_2024_curado.rds|csv` → este reporte. La integración de fuentes en esta unidad se limitó a incorporar el diccionario oficial de la hoja `Diccionario de variables` como etiquetas de los factores y a derivar variables contextuales de IE y sección a partir de la propia base.
+
+**Diseño muestral.** La ENLA 2024 de 6.° grado es una evaluación muestral, no censal. Cada registro trae un factor de expansión propio para cada prueba (`peso_Lectura`, `peso_Mate`), que difiere entre pruebas en `r f0(sum(d$peso_lect != d$peso_mat, na.rm = TRUE))` casos. Todas las estimaciones de este reporte usan el diseño complejo (conglomerado: IE; estrato: `Estrato_DRE`; peso de la prueba correspondiente) con el paquete *survey* [@lumley2004]. Los valores sin ponderar se usan solo para describir la base.
+
+**Ética y datos sensibles.** Se trata de un análisis secundario de datos administrativos anonimizados por el MINEDU, por lo que no corresponde recabar consentimiento informado adicional. La base no contiene nombres, DNI ni códigos modulares; `ID_IE` es un código anonimizado y `cor_est` un correlativo dentro de la sección. El dataset curado sustituye `cor_est` por un identificador compuesto y no incorpora información personal identificable. Los resultados se reportan siempre de forma agregada. Los términos de uso de la base deben verificarse en el portal de la UMC antes de redistribuir el archivo crudo; el código del repositorio puede publicarse bajo licencia MIT, en coherencia con el diagnóstico FAIR del Avance 1.
+
+# Limpieza e integración
+
+El script `R/01_preparacion.R` se ejecuta de inicio a fin sin intervención manual y se detiene si alguna verificación de integridad falla. La @tbl-calidad resume el diagnóstico de calidad y la @tbl-decisiones registra cada decisión con su justificación, la alternativa descartada y su efecto sobre el número de casos o variables; las cifras de ambas tablas se calculan por código.
+
+```{r}
+#| label: tbl-calidad
+#| tbl-cap: "Diagnóstico de calidad de la base cruda"
+nf <- function(x) sum(is.na(x))
+calidad <- data.frame(
+  Aspecto = c("Registros / variables", "Duplicados (clave y fila completa)",
+              "Faltantes en medida y nivel de Lectura", "Faltantes en medida y nivel de Matemática",
+              "Faltantes en ambas pruebas", "Faltantes en variables contextuales",
+              "Valores extremos |z| > 3 (Lectura / Matemática)",
+              "Coherencia nivel–medida", "IE con más de una gestión o área"),
+  Resultado = c(paste(f0(n_tot), "/ 21"), "0 / 0",
+                paste0(f0(nf(d$lect)), " (", pc(mean(is.na(d$lect))), ")"),
+                paste0(f0(nf(d$mat)), " (", pc(mean(is.na(d$mat))), ")"),
+                f0(sum(is.na(d$lect) & is.na(d$mat))), "0 en las 14 variables",
+                paste(sum(d$atip_lect, na.rm = TRUE), "/", sum(d$atip_mat, na.rm = TRUE)),
+                "Intervalos sin solapamiento en ambas pruebas", "0")
+)
+kable(calidad)
+```
+
+```{r}
+#| label: miss-tab
+#| include: false
+miss <- d |> group_by(gestion_area) |>
+  summarise(n = n(), fl = mean(falta_lect), fm = mean(falta_mat))
+miss_s <- d |> group_by(sexo) |> summarise(fl = mean(falta_lect), fm = mean(falta_mat))
+```
+
+**Datos faltantes.** La ausencia de puntaje coincide exactamente con la ausencia del factor de expansión de esa prueba y ningún estudiante carece de ambas, lo que indica que el faltante corresponde a estudiantes no evaluados en una de las dos sesiones. Las tasas de faltantes varían poco entre subgrupos: en lectura oscilan entre `r pc(min(miss$fl))` y `r pc(max(miss$fl))` según la combinación gestión-área, y en matemática entre `r pc(min(miss$fm))` y `r pc(max(miss$fm))`. Como los puntajes son las variables respuesta, no se imputaron. Este tratamiento supone que, condicionada al diseño y a los pesos, la ausencia es ignorable; el supuesto no puede verificarse con la información disponible y se declara como limitación.
+
+**Valores atípicos.** Las medidas proceden de un modelo de teoría de respuesta al ítem y todos los valores están dentro del rango de la escala. Se conservaron y se marcaron con `atip_lect` y `atip_mat`, porque los valores bajos extremos se concentran en contextos vulnerables y su exclusión reduciría artificialmente las brechas que se busca estimar.
+
+```{r}
+#| label: tbl-decisiones
+#| tbl-cap: "Registro de decisiones de limpieza e ingeniería de variables"
+kable(dec |> dplyr::select(ID = id, Etapa = etapa, `Decisión` = decision,
+                           `Justificación` = justificacion,
+                           `Alternativa descartada` = alternativa_descartada, Efecto = efecto))
+```
+
+# Ingeniería de características
+
+La codificación convirtió `gestion2`, `area` y `sexo` en factores etiquetados y los niveles de logro en factores ordenados de cuatro categorías. Como variables derivadas se crearon `satisf_lect`, `satisf_mat` y `satisf_ambas` (logro satisfactorio), `gestion_area` (cruce de gestión y área), `n_eval_ie` y `n_eval_seccion` (tamaño de la IE y de la sección en la muestra) y los indicadores `falta_*` y `atip_*`. El escalamiento produjo `z_lect` y `z_mat`, estandarizadas con la media y la desviación estándar de toda la muestra disponible; su uso queda restringido a este análisis exploratorio. El código `codgeo` se formateó como `ubigeo` de seis dígitos para permitir, en la Unidad II, el enlace con indicadores distritales del INEI. El dataset curado tiene `r f0(nrow(d))` filas y `r ncol(d)` variables, todas documentadas en el diccionario de datos (`docs/diccionario_datos.xlsx`, @tbl-dic).
+
+No se aplicaron Boruta, RFE ni técnicas de reducción de dimensionalidad. El conjunto de predictores disponibles se reduce a gestión, área, sexo y DRE, de modo que la selección automática no tiene espacio de búsqueda, y una PCA sobre `lect` y `mat` construiría un índice a partir de las dos variables respuesta (correlación de Pearson = `r f2(cor(d$lect, d$mat, use = "complete.obs"))`), lo que contaminaría cualquier modelo posterior.
+
+```{r}
+#| label: tbl-dic
+#| tbl-cap: "Extracto del diccionario de datos (variables derivadas)"
+kable(dic |> filter(grepl("Derivada", fuente_origen)) |>
+        dplyr::select(Variable = variable, `Descripción` = descripcion, Tipo = tipo,
+                      `Valores válidos` = valores_validos))
+```
+
+# Análisis exploratorio orientado a hipótesis
+
+En la población representada, la medida promedio ponderada fue `r f1(mL)` puntos en lectura (DE = `r f1(sdL)`) y `r f1(mM)` en matemática (DE = `r f1(sdM)`). El `r pc(sL)` de los estudiantes alcanzó el nivel satisfactorio en lectura y el `r pc(sM)` en matemática. Con más de cien mil casos, prácticamente cualquier diferencia es estadísticamente significativa, por lo que la interpretación se apoya en la magnitud de la diferencia, su intervalo de confianza de diseño y la *d* de Cohen, calculada como la diferencia de medias dividida por la DE poblacional ponderada de cada prueba [@cohen1988].
+
+## H1. Brecha urbano-rural
+
+```{r}
+#| label: fig-h1a
+#| fig-cap: "Distribución ponderada de las medidas de logro por área. Las líneas discontinuas indican la media ponderada."
+fig_densidad("area", "Lectura y matemática según área de la IE (ENLA 2024, 6.° primaria)")
+```
+
+```{r}
+#| label: fig-h1b
+#| fig-cap: "Distribución ponderada de los niveles de logro por combinación de gestión y área de la IE."
+fig_niveles("gestion_area", "Niveles de logro según gestión y área de la IE")
+```
+
+```{r}
+#| label: tbl-h1
+#| tbl-cap: "Medias ponderadas por área, diferencia Rural − Urbana y tamaño del efecto"
+kable(tab_contraste(cA))
+```
+
+```{r}
+#| label: h1-pub
+#| include: false
+desLp <- subset(desL, gestion == "Pública"); desMp <- subset(desM, gestion == "Pública")
+tLp <- svyttest(lect ~ area, desLp); tMp <- svyttest(mat ~ area, desMp)
+```
+
+La distribución rural se desplaza hacia la izquierda en ambas pruebas (@fig-h1a). La diferencia Rural − Urbana fue de `r f1(g(cA, "Lectura"))` puntos en lectura (*d* = `r f2(g(cA, "Lectura", "d"))`) y de `r f1(g(cA, "Matemática"))` en matemática (*d* = `r f2(g(cA, "Matemática", "d"))`) (@tbl-h1). El logro satisfactorio en lectura fue `r pc(pA$Lectura[1])` en zonas urbanas frente a `r pc(pA$Lectura[2])` en zonas rurales; en matemática, `r pc(pA$Matemática[1])` frente a `r pc(pA$Matemática[2])`. Como el `r pc(mean(d$gestion[d$area == "Rural"] == "Pública"))` de los estudiantes rurales de la muestra asiste a IE públicas, la brecha bruta podría reflejar en parte la composición por gestión. Restringida a la gestión pública, la diferencia se mantiene en `r f1(tLp$estimate)` puntos en lectura (IC 95 %: `r f1(tLp$conf.int[1])`; `r f1(tLp$conf.int[2])`) y `r f1(tMp$estimate)` en matemática (IC 95 %: `r f1(tMp$conf.int[1])`; `r f1(tMp$conf.int[2])`).
+
+**Conclusión provisional: la evidencia apoya H1.** La brecha es de magnitud media en lectura y entre pequeña y media en matemática, y persiste dentro de la gestión pública.
+
+## H2. Gestión pública y privada
+
+```{r}
+#| label: fig-h2
+#| fig-cap: "Distribución ponderada de las medidas de logro por gestión de la IE."
+fig_densidad("gestion", "Lectura y matemática según gestión de la IE (ENLA 2024, 6.° primaria)")
+```
+
+```{r}
+#| label: tbl-h2
+#| tbl-cap: "Medias ponderadas por gestión, diferencia Privada − Pública y tamaño del efecto"
+kable(tab_contraste(cG))
+```
+
+```{r}
+#| label: h2-urb
+#| include: false
+desLu <- subset(desL, area == "Urbana"); desMu <- subset(desM, area == "Urbana")
+tLu <- svyttest(lect ~ gestion, desLu); tMu <- svyttest(mat ~ gestion, desMu)
+```
+
+La ventaja de la gestión privada fue de `r f1(g(cG, "Lectura"))` puntos en lectura (*d* = `r f2(g(cG, "Lectura", "d"))`) y de `r f1(g(cG, "Matemática"))` en matemática (*d* = `r f2(g(cG, "Matemática", "d"))`) (@tbl-h2, @fig-h2). La asimetría entre pruebas es clara: el logro satisfactorio en lectura pasa de `r pc(pG$Lectura[1])` a `r pc(pG$Lectura[2])`, mientras que en matemática solo pasa de `r pc(pG$Matemática[1])` a `r pc(pG$Matemática[2])`. Dentro del área urbana, donde se concentra la oferta privada, la diferencia se reduce a `r f1(tLu$estimate)` puntos en lectura (IC 95 %: `r f1(tLu$conf.int[1])`; `r f1(tLu$conf.int[2])`) y `r f1(tMu$estimate)` en matemática (IC 95 %: `r f1(tMu$conf.int[1])`; `r f1(tMu$conf.int[2])`). La celda Privada-Rural (n = `r sum(d$gestion_area == "Privada-Rural")`) produce estimaciones imprecisas (@fig-h1b) y no permite contrastar la gestión dentro del área rural.
+
+**Conclusión provisional: la evidencia apoya H2 en lectura y la apoya de forma débil en matemática.** La base no contiene el nivel socioeconómico de las familias, que es el confusor más plausible de la ventaja privada; sin esa variable, la diferencia no puede atribuirse a la gestión.
+
+## H3. Brecha por sexo según el área curricular
+
+```{r}
+#| label: fig-h3
+#| fig-cap: "Media ponderada e IC 95 % de diseño por sexo en cada prueba."
+cS |>
+  ggplot(aes(x = prueba, y = media, colour = grupo)) +
+  geom_pointrange(aes(ymin = li, ymax = ls), position = position_dodge(width = 0.4), size = 0.5) +
+  scale_colour_manual(values = pal2, name = NULL) +
+  labs(title = "Lectura y matemática según sexo del estudiante (ENLA 2024, 6.° primaria)",
+       x = NULL, y = "Medida promedio ponderada (puntos de la escala ENLA)") + tema
+```
+
+```{r}
+#| label: tbl-h3
+#| tbl-cap: "Medias ponderadas por sexo, diferencia Mujer − Hombre y tamaño del efecto"
+kable(tab_contraste(cS))
+```
+
+Las mujeres superaron a los hombres en lectura por `r f1(g(cS, "Lectura"))` puntos (*d* = `r f2(g(cS, "Lectura", "d"))`), y los hombres superaron a las mujeres en matemática por `r f1(-g(cS, "Matemática"))` puntos (*d* = `r f2(g(cS, "Matemática", "d"))`) (@tbl-h3, @fig-h3). En matemática, la proporción de logro satisfactorio fue `r pc(pS$Matemática[1])` en hombres y `r pc(pS$Matemática[2])` en mujeres.
+
+**Conclusión provisional: la evidencia apoya H3 en cuanto a la dirección de las brechas.** Ambos efectos son pequeños, sobre todo en lectura, donde la diferencia equivale a menos de una décima de desviación estándar.
+
+## H4. Anidamiento de estudiantes en IE
+
+```{r}
+#| label: h4
+#| include: false
+icc <- function(y, data) {
+  m <- lmer(as.formula(paste0(y, " ~ 1 + (1 | id_ie)")), data = data, REML = TRUE)
+  v <- as.data.frame(VarCorr(m))$vcov
+  v[1] / sum(v)
+}
+iccL <- icc("lect", dl); iccM <- icc("mat", dm)
+ie_m <- bind_rows(
+  dl |> group_by(id_ie, gestion_area) |> summarise(m = mean(lect), n = n()) |> mutate(prueba = "Lectura"),
+  dm |> group_by(id_ie, gestion_area) |> summarise(m = mean(mat), n = n()) |> mutate(prueba = "Matemática")) |>
+  filter(n >= 5)
+```
+
+```{r}
+#| label: fig-h4
+#| fig-cap: "Distribución de las medias de IE (IE con al menos cinco estudiantes evaluados), por combinación gestión-área."
+ggplot(ie_m, aes(x = gestion_area, y = m, fill = gestion_area)) +
+  geom_boxplot(outlier.size = 0.4, width = 0.6, show.legend = FALSE) +
+  facet_wrap(~prueba) +
+  scale_fill_manual(values = c("#1F5A96", "#7FA7CF", "#C8553D", "#E9A99B")) +
+  labs(title = "Heterogeneidad entre instituciones educativas",
+       x = NULL, y = "Media de la IE (puntos de la escala ENLA)") +
+  tema + theme(axis.text.x = element_text(angle = 20, hjust = 1))
+```
+
+El modelo nulo de dos niveles estimado con *lme4* [@bates2015], sin ponderar, arrojó una correlación intraclase de `r f2(iccL)` en lectura y `r f2(iccM)` en matemática. Entre la cuarta y la tercera parte de la varianza total corresponde a diferencias entre IE, y la dispersión de las medias de IE es amplia dentro de cada combinación de gestión y área (@fig-h4).
+
+**Conclusión provisional: la evidencia apoya H4.** Las observaciones no son independientes; tratarlas como tales subestimaría los errores estándar y, en aprendizaje automático, permitiría que estudiantes de una misma IE aparezcan a la vez en entrenamiento y en prueba. La estimación de la correlación intraclase no incorpora los pesos muestrales y debe tomarse como aproximación.
+
+```{r}
+#| label: fig-resumen
+#| fig-cap: "Resumen de tamaños del efecto (d de Cohen con IC 95 % de diseño). Los contrastes se expresan como Rural − Urbana, Privada − Pública y Mujer − Hombre."
+bind_rows(cA |> mutate(h = "H1 Rural − Urbana"), cG |> mutate(h = "H2 Privada − Pública"),
+          cS |> mutate(h = "H3 Mujer − Hombre")) |>
+  distinct(h, prueba, d, d_li, d_ls) |>
+  ggplot(aes(x = d, y = h, colour = prueba)) +
+  geom_vline(xintercept = 0, colour = "grey50") +
+  geom_vline(xintercept = c(-0.5, -0.2, 0.2, 0.5), colour = "grey85", linetype = 3) +
+  geom_pointrange(aes(xmin = d_li, xmax = d_ls), position = position_dodge(width = 0.5)) +
+  scale_colour_manual(values = pal2, name = NULL) +
+  labs(title = "Magnitud de las brechas exploradas",
+       x = "d de Cohen (diferencia / DE poblacional ponderada)", y = NULL) + tema
+```
+
+# Hallazgos y decisiones para la Unidad II
+
+```{r}
+#| label: r2
+#| include: false
+r2 <- function(des, y) {
+  m <- svyglm(as.formula(paste0(y, " ~ area + gestion + sexo")), design = des)
+  v <- coef(svyvar(as.formula(paste0("~", y)), des))
+  1 - summary(m)$dispersion[1] / v
+}
+r2L <- r2(desL, "lect"); r2M <- r2(desM, "mat")
+cv <- sqrt(suppressWarnings(chisq.test(table(d$gestion, d$area)))$statistic / nrow(d))
+```
+
+Las cuatro hipótesis reciben apoyo exploratorio, con magnitudes muy desiguales: la brecha por área es la de mayor tamaño, la de gestión es marcada en lectura y modesta en matemática, y la de sexo es pequeña y cambia de signo según la prueba. Un modelo lineal ponderado con área, gestión y sexo como predictores explica alrededor del `r pc(r2L)` de la varianza de lectura y del `r pc(r2M)` de la de matemática. Estos valores anticipan una capacidad predictiva limitada si no se incorporan nuevas fuentes de información.
+
+**Variables respuesta.** Para la tarea de regresión se usarán `lect` y `mat`, modeladas por separado. Para la tarea de clasificación se usarán `satisf_lect` y `satisf_mat` (binarias); `nivel_lect` y `nivel_mat` quedan disponibles para modelos ordinales.
+
+**Variables que pasan al modelado.** `area`, `gestion`, `sexo`, `dre` (o `cod_dre`), `n_eval_ie` y, como variables de diseño (no predictores), `id_ie`, `estrato`, `peso_lect` y `peso_mat`. Se recomienda enlazar indicadores distritales del INEI por `ubigeo` para aproximar el nivel socioeconómico, cuya ausencia es la principal amenaza a la validez de las conclusiones.
+
+**Riesgos identificados y tratamiento previsto.**
+
+- *Desbalance de clases.* Solo el `r pc(sM)` de los estudiantes alcanza el nivel satisfactorio en matemática y el `r pc(sL)` en lectura. Se reportarán AUC-PR, sensibilidad y F1 junto con la exactitud, y se evaluarán pesos de clase o ajuste del umbral, siempre dentro de la validación cruzada.
+- *Multicolinealidad y celdas escasas.* La asociación entre gestión y área es moderada (V de Cramér = `r f2(cv)`), insuficiente para producir colinealidad severa, pero la celda Privada-Rural (n = `r sum(d$gestion_area == "Privada-Rural")`) impide estimar con precisión la interacción gestión × área. Se revisarán los factores de inflación de la varianza en los modelos lineales.
+- *Fuga de información.* `nivel_*` y `satisf_*` derivan de `lect` y `mat` mediante puntos de corte y no pueden usarse como predictores de la medida, ni viceversa. Tampoco se crearán agregados de IE a partir de los resultados (por ejemplo, la media de la IE). La estandarización (`z_*`) y cualquier imputación o reducción de dimensionalidad se reajustarán dentro de cada pliegue [@kapoor2023].
+- *Dependencia por conglomerado.* Dada la correlación intraclase cercana a 0,28, la validación cruzada se hará agrupada por `id_ie` y la inferencia se apoyará en modelos multinivel o en errores estándar de diseño.
+- *Representatividad.* Los modelos explicativos usarán los factores de expansión; en los modelos predictivos se compararán las métricas con y sin ponderación.
+
+# Declaración de uso de IA generativa {.unnumbered}
+
+Se utilizó Claude (Anthropic) como asistente en la estructuración del script de preparación en R, el diseño del registro de decisiones y del diccionario, y la redacción preliminar de este reporte. Las cifras del documento se calculan por código a partir de la base del MINEDU y no fueron introducidas manualmente. Los autores revisaron el código, verificaron los resultados frente a la base cruda y asumen la responsabilidad del contenido.
+
+# Referencias {.unnumbered}
+
+::: {#refs}
+:::
+
+# Anexo. Entorno de ejecución {.unnumbered}
+
+```{r}
+#| label: session
+#| echo: false
+cat(R.version.string, "\n")
+for (p in paquetes) cat(sprintf("%-10s %s\n", p, as.character(packageVersion(p))))
+```

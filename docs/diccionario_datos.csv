@@ -1,0 +1,34 @@
+"variable","descripcion","tipo","unidad_escala","valores_validos","fuente_origen","transformacion","n_faltantes"
+"id_est","Identificador único del estudiante (anonimizado)","carácter","código","ID_IE_ID_SECCION_cor_est; único","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Concatenación de ID_IE, ID_SECCION y cor_est; reemplaza a cor_est",0
+"id_ie","Identificador anonimizado de la institución educativa (conglomerado del diseño)","entero","código","1 a 4442 (4442 IE)","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Renombrado de ID_IE",0
+"id_seccion","Identificador único de sección dentro de la IE","carácter","código","ID_IE_ID_SECCION","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Concatenación de ID_IE e ID_SECCION",0
+"cod_dre","Código de la Dirección Regional de Educación","entero","código","100 a 2500","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Renombrado de cod_DRE",0
+"dre","Nombre de la DRE","factor","nominal","26 niveles","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","nom_dre convertido a factor",0
+"cod_ugel","Código de la Unidad de Gestión Educativa Local","entero","código","223 UGEL","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Renombrado de cod_UGEL",0
+"ugel","Nombre de la UGEL","carácter","nominal","texto","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Renombrado de nom_ugel",0
+"ubigeo","Código de ubicación geográfica INEI (distrito)","carácter","código de 6 dígitos","010101 a 250401","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","codgeo formateado con ceros a la izquierda para enlazar fuentes INEI",0
+"departamento","Departamento","carácter","nominal","25 departamentos","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Sin cambios",0
+"provincia","Provincia","carácter","nominal","texto","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Sin cambios",0
+"distrito","Distrito","carácter","nominal","texto","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Sin cambios",0
+"estrato","Estrato muestral (Estrato_DRE)","entero","código","123 estratos","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Renombrado de Estrato_DRE; se usa como estrato del diseño muestral",0
+"gestion","Gestión de la IE","factor","nominal","Pública; Privada","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Recodificación de gestion2 (1 = Pública, 2 = Privada)",0
+"area","Área donde se ubica la IE","factor","nominal","Urbana; Rural","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Recodificación de area (1 = Urbana, 2 = Rural)",0
+"gestion_area","Combinación de gestión y área","factor","nominal","Pública-Urbana; Pública-Rural; Privada-Urbana; Privada-Rural","Derivada en 01_preparacion.R","Cruce de gestion y area; Privada-Rural tiene n = 381",0
+"sexo","Sexo del estudiante","factor","nominal","Hombre; Mujer","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Recodificación de sexo (1 = Hombre, 2 = Mujer)",0
+"n_eval_ie","Número de estudiantes evaluados de la IE en la muestra","entero","estudiantes","1 a 85","Derivada en 01_preparacion.R","Conteo por id_ie; variable contextual, no usa información de resultados",0
+"n_eval_seccion","Número de estudiantes evaluados de la sección en la muestra","entero","estudiantes","1 a 43","Derivada en 01_preparacion.R","Conteo por id_seccion",0
+"lect","Medida promedio en Lectura (escala ENLA)","numérico","puntos de la escala de medida (TRI)","92.923 a 792.826","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Renombrado de M500_EM_6P_2024_CT; faltantes sin imputar",2576
+"nivel_lect","Nivel de logro en Lectura","factor ordenado","ordinal","Previo al inicio < En inicio < En proceso < Satisfactorio","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Recodificación de grupo_EM_6P_2024_CT (1 a 4)",2576
+"satisf_lect","Logro satisfactorio en Lectura","entero","binaria","0 = no; 1 = sí; NA = no evaluado","Derivada en 01_preparacion.R","1 si grupo_EM_6P_2024_CT = 4",2576
+"falta_lect","Indicador de puntaje de Lectura faltante","entero","binaria","0 = observado; 1 = faltante","Derivada en 01_preparacion.R","1 si M500_EM_6P_2024_CT es NA",0
+"z_lect","Medida de Lectura estandarizada","numérico","desviaciones estándar","-5.124 a 3.190","Derivada en 01_preparacion.R","(lect - media) / DE sobre la muestra disponible; uso exploratorio",2576
+"atip_lect","Indicador de valor atípico en Lectura","entero","binaria","0; 1; NA","Derivada en 01_preparacion.R","1 si |z_lect| > 3; los casos se conservan",2576
+"peso_lect","Factor de expansión de Lectura","numérico","estudiantes representados","1.000 a 668.087","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Renombrado de peso_Lectura",2576
+"mat","Medida promedio en Matemática (escala ENLA)","numérico","puntos de la escala de medida (TRI)","87.317 a 928.581","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Renombrado de M500_EM_6P_2024_MA; faltantes sin imputar",1720
+"nivel_mat","Nivel de logro en Matemática","factor ordenado","ordinal","Previo al inicio < En inicio < En proceso < Satisfactorio","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Recodificación de grupo_EM_6P_2024_MA (1 a 4)",1720
+"satisf_mat","Logro satisfactorio en Matemática","entero","binaria","0 = no; 1 = sí; NA = no evaluado","Derivada en 01_preparacion.R","1 si grupo_EM_6P_2024_MA = 4",1720
+"falta_mat","Indicador de puntaje de Matemática faltante","entero","binaria","0 = observado; 1 = faltante","Derivada en 01_preparacion.R","1 si M500_EM_6P_2024_MA es NA",0
+"z_mat","Medida de Matemática estandarizada","numérico","desviaciones estándar","-4.416 a 4.280","Derivada en 01_preparacion.R","(mat - media) / DE sobre la muestra disponible; uso exploratorio",1720
+"atip_mat","Indicador de valor atípico en Matemática","entero","binaria","0; 1; NA","Derivada en 01_preparacion.R","1 si |z_mat| > 3; los casos se conservan",1720
+"peso_mat","Factor de expansión de Matemática","numérico","estudiantes representados","1.000 a 668.087","MINEDU-UMC, ENLA 2024 6.° primaria (BD_6P ENLA muestral 2024.xlsx, hoja BD)","Renombrado de peso_Mate",1720
+"satisf_ambas","Logro satisfactorio simultáneo en ambas áreas","entero","binaria","0; 1; NA si falta alguna prueba","Derivada en 01_preparacion.R","1 si nivel 4 en Lectura y en Matemática",424
