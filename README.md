@@ -21,7 +21,13 @@ R/00_dependencias.R  instalación de paquetes y actualización de renv.lock
 R/01_preparacion.R   crudo -> curado, diccionario y registro de decisiones
 analysis/            reporte Quarto (U1_producto.qmd) y su HTML renderizado
 docs/                diccionario de datos, registro de decisiones y bitácora
+notebooks/           cuadernos de Colab de la Unidad II (S3S4_parte2: B6; S56_red_con_mis_datos: red neuronal)
 ```
+
+## Unidad II: modelos predictivos
+- `R/02_dataset_modelado.R` genera `data/processed/enla6p_2024_modelado_mat.csv` (103 522 estudiantes; respuesta `logro_mat`).
+- `notebooks/S3S4_parte2.ipynb`: comparación automática de Elastic Net, Random Forest, XGBoost y LightGBM (paso B6).
+- `notebooks/S56_red_con_mis_datos.ipynb`: redes neuronales frente a Elastic Net y Random Forest (tarea 4, sesiones 5 y 6).
 
 ## Cómo reproducir
 1. Clone el repositorio y abra `DATASET_ENLA_6_2024.Rproj` en RStudio.
